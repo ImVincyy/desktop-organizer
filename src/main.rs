@@ -1,17 +1,31 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::io::Error;
 use colored::Colorize;
+use serde::Deserialize;
+use std::io::BufReader;
+
+use struct_iterable::Iterable;
 
 use crate::simple_user_input::get_input;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 enum FolderTypes {
     Applications, // atalhos tem o tipo de extensão de arquivo .lnk  |  a maioria são de executáveis, então, acho que é seguro apostar nisso
     Code,
     Media,
     Images,
     Misc
+}
+
+type FilesClassificationElement = Vec<String>;
+
+#[derive(Deserialize, Debug, Iterable)]
+struct FilesExtensions {
+    applications: FilesClassificationElement,
+    code: FilesClassificationElement,
+    images: FilesClassificationElement,
 }
 
 // fazer um algoritmo capaz de distuinguir o determinado uso de uma pasta analisando os conteúdos dentro dela.
@@ -32,9 +46,40 @@ fn main() -> std::io::Result<()> {
     read_data_log(my_files);
     move_dir_files(my_files)?;
 
-    println!("{}", get_current_user().unwrap());
-
+    println!("{}", get_current_user()?);
+    println!("{:?}", get_file_extensions_json()?);
+    println!("{:?}", get_file_classification(&String::from("png"), pack_file_extensions(get_file_extensions_json()?)));
+    get_input("Press enter to end.");
     Ok(())
+}
+
+fn get_file_extensions_json() -> std::io::Result<FilesExtensions>{
+    let file: fs::File = fs::File::open("src/FileExtensions.json")?;
+    let reader = BufReader::new(file);
+    let f: FilesExtensions = serde_json::from_reader(reader)?;
+    Ok(f)
+}
+
+fn pack_file_extensions(f: FilesExtensions) -> HashMap<String, FolderTypes>{
+    let mut new_thing: HashMap<String, FolderTypes> = HashMap::new();
+    for (key, classification_e) in f.iter() {
+        if let Some(n) = classification_e.downcast_ref::<FilesClassificationElement>() {
+            for (_, v) in n.iter().enumerate() {
+                let folder_type = match key {
+                    "code" => FolderTypes::Code,
+                    "images" => FolderTypes::Images,
+                    "applications" => FolderTypes::Applications,
+                    _ => FolderTypes::Misc, // Uma variante padrão para chaves desconhecidas
+                };
+                new_thing.insert(v.to_string(), folder_type);
+            }
+        }
+    }
+    new_thing
+}
+
+fn get_file_classification(extension: &String, packed_hashmap: HashMap<String, FolderTypes>) -> FolderTypes {
+    packed_hashmap[&extension.clone()]
 }
 
 fn read_data_log(f: &Path) {
@@ -51,6 +96,7 @@ fn get_current_user() -> Result<String, Error> {
 }
 
 fn move_dir_files(path: &Path) -> std::io::Result<()> {
+    let corresponding_path: HashMap<&Path, FolderTypes> = HashMap::new();
     if let Ok(n) = fs::read_dir(path) {
         for input in n {
             let input = input?;
