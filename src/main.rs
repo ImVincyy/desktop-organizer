@@ -17,6 +17,7 @@ enum FolderTypes {
     Code,
     Media,
     Images,
+    Text,
     Misc
 }
 
@@ -28,6 +29,7 @@ struct FilesExtensions {
     code: FilesClassificationElement,
     images: FilesClassificationElement,
     media: FilesClassificationElement,
+    text: FilesClassificationElement
 }
 
 //TODO: fazer um algoritmo capaz de distuinguir o determinado uso de uma pasta analisando os conteúdos dentro dela.
@@ -84,6 +86,7 @@ fn folder_types_to_string(n: FolderTypes) -> &'static str{
         FolderTypes::Code => &"Code",
         FolderTypes::Images => &"Images",
         FolderTypes::Media => &"Media",
+        FolderTypes::Text => &"Text",
         FolderTypes::Misc => &"Misc",
     }
 }
@@ -109,6 +112,7 @@ fn pack_file_extensions(f: FilesExtensions) -> HashMap<String, FolderTypes>{
                     "images" => FolderTypes::Images,
                     "applications" => FolderTypes::Applications,
                     "media" => FolderTypes::Media,
+                    "text" => FolderTypes::Text,
                     _ => FolderTypes::Misc,
                 };
                 new_thing.insert(v.to_string(), folder_type);
