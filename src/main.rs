@@ -5,6 +5,7 @@ use std::io::Error;
 use colored::Colorize;
 use serde::Deserialize;
 use std::io::BufReader;
+use std::path::PathBuf;
 
 use struct_iterable::Iterable;
 
@@ -26,9 +27,10 @@ struct FilesExtensions {
     applications: FilesClassificationElement,
     code: FilesClassificationElement,
     images: FilesClassificationElement,
+    media: FilesClassificationElement,
 }
 
-// fazer um algoritmo capaz de distuinguir o determinado uso de uma pasta analisando os conteúdos dentro dela.
+//TODO: fazer um algoritmo capaz de distuinguir o determinado uso de uma pasta analisando os conteúdos dentro dela.
 
 fn main() -> std::io::Result<()> {
     print!("\n");
@@ -40,17 +42,54 @@ fn main() -> std::io::Result<()> {
     }
     let to_organize_dir = Path::new(&binding);
 
-    let my_files = Path::new(&to_organize_dir);
+    read_data_log(to_organize_dir);
+    let packed = pack_file_extensions(get_file_extensions_json()?);
+    move_dir_files(to_organize_dir, &packed)?;
 
-    //fs::rename("a.txt", "moved_new_dir/b.txt")?;
-    read_data_log(my_files);
-    move_dir_files(my_files)?;
-
-    println!("{}", get_current_user()?);
-    println!("{:?}", get_file_extensions_json()?);
-    println!("{:?}", get_file_classification(&String::from("png"), pack_file_extensions(get_file_extensions_json()?)));
     get_input("Press enter to end.");
     Ok(())
+}
+
+fn get_directory(parent: &Path, name: &str) -> Result<PathBuf, Error> {
+    let dir_path = parent.join(name);
+    if !dir_path.exists() {
+        fs::create_dir(&dir_path)?;
+    }
+    Ok(dir_path)
+}
+
+fn place_file_in_directory(file: &Path, directory: &Path, packed_hashmap: &HashMap<String, FolderTypes>) -> std::io::Result<()> {
+    if !file.exists() {
+        return Err(Error::other(format!("File not found: {}", file.display())));
+    }
+
+    let extension = file
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    let classification = get_file_classification(extension, packed_hashmap);
+    let classification_path = folder_types_to_string(classification);
+    let dest_dir = get_directory(directory, classification_path)?;
+    let dest = dest_dir.join(file.file_name().unwrap());
+
+    fs::rename(file, dest)?;
+    Ok(())
+}
+
+
+
+fn folder_types_to_string(n: FolderTypes) -> &'static str{
+    match n {
+        FolderTypes::Applications => &"Applications",
+        FolderTypes::Code => &"Code",
+        FolderTypes::Images => &"Images",
+        FolderTypes::Media => &"Media",
+        FolderTypes::Misc => &"Misc",
+    }
+}
+
+fn get_path_extension(path: &Path) -> String {
+    path.extension().unwrap().to_str().unwrap().to_string()
 }
 
 fn get_file_extensions_json() -> std::io::Result<FilesExtensions>{
@@ -69,7 +108,8 @@ fn pack_file_extensions(f: FilesExtensions) -> HashMap<String, FolderTypes>{
                     "code" => FolderTypes::Code,
                     "images" => FolderTypes::Images,
                     "applications" => FolderTypes::Applications,
-                    _ => FolderTypes::Misc, // Uma variante padrão para chaves desconhecidas
+                    "media" => FolderTypes::Media,
+                    _ => FolderTypes::Misc,
                 };
                 new_thing.insert(v.to_string(), folder_type);
             }
@@ -78,8 +118,11 @@ fn pack_file_extensions(f: FilesExtensions) -> HashMap<String, FolderTypes>{
     new_thing
 }
 
-fn get_file_classification(extension: &String, packed_hashmap: HashMap<String, FolderTypes>) -> FolderTypes {
-    packed_hashmap[&extension.clone()]
+fn get_file_classification(extension: &str, packed_hashmap: &HashMap<String, FolderTypes>) -> FolderTypes {
+    packed_hashmap
+        .get(extension)
+        .copied()
+        .unwrap_or(FolderTypes::Misc)
 }
 
 fn read_data_log(f: &Path) {
@@ -95,19 +138,21 @@ fn get_current_user() -> Result<String, Error> {
     }
 }
 
-fn move_dir_files(path: &Path) -> std::io::Result<()> {
-    let corresponding_path: HashMap<&Path, FolderTypes> = HashMap::new();
+fn move_dir_files(path: &Path, packed_hashmap: &HashMap<String, FolderTypes>) -> std::io::Result<()> {
     if let Ok(n) = fs::read_dir(path) {
         for input in n {
             let input = input?;
-            let path = input.path();
+            let entry_path = input.path();
 
-            if path.is_file() {
-                println!("Found : [{}]", path.display());
-                //println!("Extension : .{:?}", path.extension().unwrap().to_str().unwrap())
-            } else if path.is_dir() {
-                println!("Found : [{}]", path.display());
-                move_dir_files(&path)?;
+            if entry_path.is_file() {
+                let name = entry_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if name.eq_ignore_ascii_case("desktop.ini") {
+                    continue;
+                }
+                println!("Found : [{}]", entry_path.display());
+                place_file_in_directory(&entry_path, path, packed_hashmap)?;
+            } else if entry_path.is_dir() {
+                println!("Found : [{}]", entry_path.display());
             }
         }
     }
